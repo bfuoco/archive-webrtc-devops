@@ -1,0 +1,45 @@
+---
+# Defines the region where the build server resides. This is used for configuring the AWS CLI tools. The region
+# specified here is where the teamcity server config will be backed up to.
+#
+# This value will normally come from packer, as it will specify a region on the command line when building the teamcity
+# server AMI.
+aws_region: us-west-1
+
+# Defines the version of teamcity to install, should be in the format #.#.#.
+teamcity_version: 10.0.1
+
+# Defines the sha256 hash of the teamcity tarball that will downloaded. If this does not match then the get_url task
+# will not be sucessful.
+teamcity_sha256: 8B59EE86724DCCB1EDE63E26D506541E48E832705CB2098893DBC32980316ECA
+
+# Defines what hour that teamcity backups will occur at.
+teamcity_backup_hour: 0
+
+# Defines what minute that teamcity backups will occur at.
+teamcity_backup_minute: 30
+
+# Defines the name of the S3 bucket where config will be backed up to.
+teamcity_backup_bucket: webrtc-webrtc
+
+# Defines the key where teamcity will back up its configuration to.
+teamcity_backup_object: meta/teamcity/backup
+
+# The name of the database that teamcity should use to store build results.
+teamcity_database: teamcity
+
+# Defines the mysql root username.
+mysql_root_username: root
+
+# Defines the mysql root password.
+mysql_root_password: root
+
+# Name of the Slack bot to use when sending messages.
+slack_bot_name: Testblob
+
+# Defines system-wide environment variables. The AWS credentials are copied here so they can be used when running
+# command line scripts.
+environment_config:
+  AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+  AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  AWS_DEFAULT_REGION: "{{ aws_region }}"

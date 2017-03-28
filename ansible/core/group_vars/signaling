@@ -1,0 +1,6 @@
+---
+# The version of NodeJS to install.
+nodejs_version: "4.x"
+
+# The user to install packages as.
+nodejs_install_npm_user: "ubuntu"

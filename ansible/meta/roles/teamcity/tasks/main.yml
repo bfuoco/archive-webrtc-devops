@@ -1,0 +1,226 @@
+---
+- name: ensure required packages are installed
+  apt:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - awscli
+    - curl
+    - mercurial
+    - git
+    - ca-certificates
+    - mysql-server
+    - python-mysqldb
+    - python-boto
+  register: result
+  until: result|success
+  retries: 5
+  delay: 10
+
+- name: ensure teamcity group exists
+  group:
+    name: teamcity
+    system: yes
+
+- name: ensure teamcity user exists
+  user:
+    name: teamcity
+    group: teamcity
+    createhome: yes
+    system: yes
+
+- name: copy environment variables for teamcity user
+  copy:
+    src: files/home/teamcity/.pam_environment
+    dest: /home/teamcity/.pam_environment
+    owner: teamcity
+    group: teamcity
+    mode: 0770
+
+- name: ensure teamcity server config directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: teamcity
+    group: teamcity
+    mode: 0771
+  with_items:
+    - /srv/.BuildServer
+    - /srv/.BuildServer/config
+
+- name: check if teamcity is installed
+  stat:
+    path: /srv/TeamCity/bin/bootstrap.jar
+  register: teamcity_jarfile
+
+- name: download teamcity tarball
+  get_url:
+    url: "http://download.jetbrains.com/teamcity/TeamCity-{{ teamcity_version }}.tar.gz"
+    dest: ~/
+    owner: teamcity
+    group: teamcity
+    mode: 0660
+    sha256sum: "{{ teamcity_sha256 }}"
+  register: result
+  until: result|success
+  retries: 5
+  delay: 10
+  when: not teamcity_jarfile.stat.exists
+
+- name: unpack teamcity tarball
+  unarchive:
+    src: "~/TeamCity-{{ teamcity_version }}.tar.gz"
+    dest: /srv
+    owner: teamcity
+    group: teamcity
+    creates: /srv/TeamCity/bin/bootstrap.jar
+
+- name: check if MySQL JDBC connector is installed
+  stat:
+    path: /srv/.BuildServer/lib/jdbc/mysql-connector-java-5.1.39-bin.jar
+  register: jdbc_jarfile
+
+- name: ensure MySQL JDBC connector is downloaded
+  get_url:
+    url: http://cdn.mysql.com//Downloads/Connector-J/mysql-connector-java-5.1.39.tar.gz
+    dest: ~/
+    owner: teamcity
+    group: teamcity
+    mode: 0660
+    sha256sum: FA1BDC9EE5323642C5A533FA73FBCF537B26A979E5981C486C24256C433C7718
+  register: result
+  until: result|success
+  retries: 5
+  delay: 10
+  when: not jdbc_jarfile.stat.exists
+
+- name: ensure JDBC connector directory exists
+  file:
+    path: /srv/.BuildServer/lib/jdbc
+    state: directory
+    owner: teamcity
+    group: teamcity
+    mode: 0771
+
+- name: unpack MySQL JDBC connector
+  unarchive:
+    src: ~/mysql-connector-java-5.1.39.tar.gz
+    dest: /srv/.BuildServer/lib/jdbc
+    owner: teamcity
+    group: teamcity
+    creates: /srv/.BuildServer/lib/jdbc/mysql-connector-java-5.1.39-bin.jar
+
+- name: ensure JDBC connector link to jar file exists
+  file:
+    src: /srv/.BuildServer/lib/jdbc/mysql-connector-java-5.1.39/mysql-connector-java-5.1.39-bin.jar
+    dest: /srv/.BuildServer/lib/jdbc/mysql-connector-java-5.1.39-bin.jar
+    state: link
+    owner: teamcity
+    group: teamcity
+    mode: 0771
+
+- name: copy database.properties template file
+  template:
+    src: templates/srv/.BuildServer/config/database.properties.j2
+    dest: "{{ item }}/database.properties"
+    owner: teamcity
+    group: teamcity
+    mode: 0660
+  with_items:
+    - "/srv/.BuildServer/config"
+    - "/home/teamcity"
+
+- name: set root password for MySQL user
+  mysql_user:
+    check_implicit_admin: yes
+    name: "{{ mysql_root_username }}"
+    password: "{{ mysql_root_password }}"
+
+- name: create teamcity database
+  mysql_db:
+    name: "{{ teamcity_database }}"
+    login_user: "{{ mysql_root_username }}"
+    login_password: "{{ mysql_root_password }}"
+
+- name: copy mysql configuration
+  copy:
+    src: files/etc/mysql/mysql.cnf
+    dest: /etc/mysql/mysql.cnf
+    mode: 0644
+  notify:
+    - restart mysql
+
+- name: copy teamcity init script
+  copy:
+    src: "files/etc/init.d/{{ item }}"
+    dest: "/etc/init.d/{{ item }}"
+    owner: teamcity
+    group: teamcity
+    mode: 0770
+  notify:
+    - restart teamcity
+    - restart teamcity agent
+  with_items:
+    - teamcity
+    - teamcity-agent
+
+- name: register teamcity services with rc.d
+  service:
+    name: "{{ item }}"
+    enabled: yes
+  notify:
+    - restart teamcity
+    - restart teamcity agent
+  with_items:
+    - teamcity
+    - teamcity-agent
+
+- name: copy backup scripts
+  template:
+    src: "templates/usr/local/bin/{{ item }}.j2"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: teamcity
+    group: teamcity
+    mode: 0770
+  with_items:
+    - backup
+    - restore
+
+- name: add cron job to restore config from backup on first reboot
+  cron:
+    job: /usr/local/bin/restore
+    user: teamcity
+    special_time: reboot
+
+- name: add cron job to backup config once per day
+  cron:
+    job: /usr/local/bin/backup
+    user: teamcity
+    hour: "{{ teamcity_backup_hour }}"
+    minute: "{{ teamcity_backup_minute }}"
+
+- name: add AWS credentials to sudoers env_keep
+  lineinfile:
+    dest: /etc/sudoers
+    line: "Defaults env_keep+=\"AWS_DEFAULT_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY JAVA_HOME\""
+
+- name: ensure .ssh directory exists for teamcity user
+  file:
+    path: /home/teamcity/.ssh
+    state: directory
+    owner: teamcity
+    group: teamcity
+    mode: 0400
+
+- name: ensure deployment private key exists on remote host
+  copy:
+    src: files/home/teamcity/.ssh/webrtc_WebrtcWebRTCJava_TeamCity
+    dest: /home/teamcity/.ssh/webrtc_WebrtcWebRTCJava_TeamCity
+    mode: 400
+
+- name: ensure deployment public key exists on remote host
+  copy:
+    src: files/home/teamcity/.ssh/webrtc_WebrtcWebRTCJava_TeamCity.pub
+    dest: /home/teamcity/.ssh/webrtc_WebrtcWebRTCJava_TeamCity.pub
+    mode: 400
+

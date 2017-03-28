@@ -1,0 +1,27 @@
+#!/bin/sh
+export TEAMCITY_DATA_PATH="/srv/.BuildServer"
+export PATH="$PATH:/sbin"
+
+case $1 in
+  start)
+    echo "Starting TeamCity Agent"
+    start-stop-daemon --start -c teamcity --exec /srv/TeamCity/buildAgent/bin/agent.sh start
+    ;;
+
+  stop)
+    echo "Stopping TeamCity Agent"
+    start-stop-daemon --start -c teamcity --exec  /srv/TeamCity/buildAgent/bin/agent.sh stop force
+    ;;
+
+  restart)
+    echo "Restarting TeamCity Agent"
+    start-stop-daemon --start -c teamcity --exec /srv/TeamCity/buildAgent/bin/agent.sh stop force
+    start-stop-daemon --start -c teamcity --exec /srv/TeamCity/buildAgent/bin/agent.sh start
+    ;;
+  *)
+    echo "Usage: /etc/init.d/teamcity-agent {start|stop|restart}"
+    exit 1
+    ;;
+esac
+
+exit 0

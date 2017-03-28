@@ -1,0 +1,16 @@
+---
+environment_config:
+  AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+  AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  AWS_DEFAULT_REGION: "{{ aws_region }}"
+  WEBRTC_MEDIA_ENVIRONMENT: development
+  WEBRTC_MEDIA_LOG_LEVEL: debug
+  WEBRTC_MEDIA_RELAY_ADDRESS: localhost
+  WEBRTC_MEDIA_RELAY_PORT: 3478
+  WEBRTC_MEDIA_RELAY_REALM: dev.media1.test-webrtc.com
+  WEBRTC_MEDIA_SIGNALING_ADDRESS: dev.signaling1.test-webrtc.com
+  WEBRTC_MEDIA_SIGNALING_PORT: 8090
+  WEBRTC_MEDIA_LOGGLY_API_KEY: "{{ loggly_api_key }}"
+  WEBRTC_MEDIA_LOGGLY_TAG: media
+
+

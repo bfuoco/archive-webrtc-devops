@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+{
+    export JAVA_HOME=/usr/lib/jvm/java-8-oracle
+
+    if [ -f  /home/teamcity/.first-run ]
+    then
+        exit 0
+    fi
+
+    echo "" > /home/teamcity/.first-run
+
+    service teamcity stop
+
+    rm -rf /srv/.BuildServer/config
+    rm -rf /srv/.BuildServer/system
+    mysql -u {{ mysql_root_username }} -p{{ mysql_root_password }} -e "DROP DATABASE {{ teamcity_database }}"
+    mysql -u {{ mysql_root_password }} -p{{ mysql_root_password }} -e "CREATE DATABASE {{ teamcity_database }}"
+
+    aws s3 cp s3://{{ teamcity_backup_bucket }}/{{ teamcity_backup_object }}.zip /tmp/teamcity-backup.zip
+
+    /srv/TeamCity/bin/maintainDB.sh restore -A /srv/.BuildServer -F /tmp/teamcity-backup.zip -T /home/teamcity/database.properties
+
+    if [ $? -eq 0 ]
+    then
+        emoji=$(( (RANDOM % 4) + 1 ))
+
+        case "$emoji" in
+        "1")
+            emoji=:grin:
+            ;;
+        "2")
+            emoji=:smile:
+            ;;
+        "3")
+            emoji=:slightly_smiling_face:
+            ;;
+        "4")
+            emoji=:kissing_smiling_eyes:
+            ;;
+        esac
+
+        service teamcity start
+
+        curl -X POST --data-urlencode "payload={\"username\":\"{{ slack_bot_name }}\",\"icon_emoji\":\"$emoji\", \"text\": \"TeamCity configuration and database entries have been restored from S3.\"}" https://hooks.slack.com/services/{{ slack_api_token }}
+    else
+        emoji=$(( (RANDOM % 4) + 1 ))
+
+        case "$emoji" in
+        "1")
+            emoji=:confounded:
+            ;;
+        "2")
+            emoji=:frowning:
+            ;;
+        "3")
+            emoji=:expressionless:
+            ;;
+        "4")
+            emoji=:unamused:
+            ;;
+        esac
+
+        curl -X POST --data-urlencode "payload={\"username\":\"{{ slack_bot_name }}\",\"icon_emoji\":\"$emoji\", \"text\": \"Something went wrong restoring TeamCity configuration. Check the log output in /home/teamcity/last-restore.log to see what went wrong.\"}" https://hooks.slack.com/services/{{ slack_api_token }}
+    fi
+
+    rm /tmp/teamcity-backup.zip
+} > /home/teamcity/last-restore-stdout.log 2> /home/teamcity//last-restore-stderr.log

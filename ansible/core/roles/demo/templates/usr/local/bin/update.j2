@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+{
+    export JAVA_HOME=/usr/lib/jvm/java-8-oracle
+
+    if aws s3 ls "s3://{{ core_update_bucket }}" 2>&1 | grep -q 'NoSuchBucket'
+    then
+        aws s3api create-bucket --bucket {{ core_update_bucket }}
+    fi
+
+    aws s3 sync s3://{{ core_update_bucket }}/{{ core_update_object }}/{{ environment }}/demo /var/www/html
+} > /var/log/webrtc/last-update-stdout 2> /var/log/webrtc/last-update-stderr.log

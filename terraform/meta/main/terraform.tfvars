@@ -1,0 +1,6 @@
+component = "webrtc"
+owner = "test"
+role_group = "meta"
+domain = "teamcity.test-webrtc.com"
+delegation_set_id = "NC26K6R8TY8VR"
+instance_type = "t2.medium"
