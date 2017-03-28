@@ -4,16 +4,17 @@ data "aws_caller_identity" "current" { }
 
 module "vpc" {
   source = "../../common/module-vpc"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
   role_group = "${var.role_group}"
   environment = "${var.environment}"
-  cidr_block = "${var.vpc_cidr_block}"
+  cidr_block = "172.16.0.0/20"
 }
 
-resource "aws_vpc_peering_connection" "meta" {
-  peer_owner_id = "${data.aws_caller_identity.current.account_id}"
-  peer_vpc_id = "${var.meta_vpc_id}"
+resource "aws_vpc_peering_connection" "build" {
+  peer_owner_id = "${data.aws_caller_identity.current.id}"
+  peer_vpc_id = "${var.build_vpc_id}"
   vpc_id = "${module.vpc.vpc_id}"
   auto_accept = true
 
@@ -26,7 +27,7 @@ resource "aws_vpc_peering_connection" "meta" {
   }
 
   tags {
-    Name = "${var.component}-${var.role_group}-${var.environment}-subnet"
+    Name = "${var.prefix}-${var.component}-${var.role_group}-subnet"
     Component = "${var.component}"
     Owner = "${var.owner}"
     RoleGroup = "${var.role_group}"
@@ -36,85 +37,81 @@ resource "aws_vpc_peering_connection" "meta" {
 
 module "media" {
   source = "../module-media"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
   role_group = "${var.role_group}"
   environment = "${var.environment}"
-  domain = "media.${var.environment}.${var.domain}",
+  domain = "media.fm-orbba.com",
   delegation_set_id = "${var.delegation_set_id}"
   instance_type = "${var.media_instance_type}"
   ami_id = "${var.media_ami_id}"
   vpc_id = "${module.vpc.vpc_id}"
   subnet_id = "${module.vpc.subnet_id}"
   public_key = "${file("keys/webrtc-core-media-ubuntu.pub")}"
-  allowed_webmin_cidr_blocks = ["74.121.33.9/32"]
-  allowed_ssh_cidr_blocks = ["74.121.33.9/32"]
 }
 
 module "signaling" {
   source = "../module-signaling"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
   role_group = "${var.role_group}"
   environment = "${var.environment}"
-  domain = "signaling.${var.environment}.${var.domain}",
+  domain = "signaling.fm-orbba.com",
   delegation_set_id = "${var.delegation_set_id}"
   instance_type = "${var.signaling_instance_type}"
   ami_id = "${var.signaling_ami_id}"
   vpc_id = "${module.vpc.vpc_id}"
   subnet_id = "${module.vpc.subnet_id}"
   public_key = "${file("keys/webrtc-core-signaling-ubuntu.pub")}"
-  allowed_webmin_cidr_blocks = ["74.121.33.9/32"]
-  allowed_ssh_cidr_blocks = ["74.121.33.9/32"]
 }
 
 module "auth" {
   source = "../module-auth"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
-  role_group = "${var.role_group}"
+  role_group = "build"
   environment = "${var.environment}"
-  domain = "auth.${var.environment}.${var.domain}",
+  domain = "auth.fm-orbba.com",
   delegation_set_id = "${var.delegation_set_id}"
   instance_type = "${var.media_instance_type}"
   ami_id = "${var.auth_ami_id}"
   vpc_id = "${module.vpc.vpc_id}"
   subnet_id = "${module.vpc.subnet_id}"
   public_key = "${file("keys/webrtc-core-auth-ubuntu.pub")}"
-  allowed_webmin_cidr_blocks = ["74.121.33.9/32"]
-  allowed_ssh_cidr_blocks = ["74.121.33.9/32"]
 }
 
 module "recording" {
   source = "../module-recording"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
   role_group = "${var.role_group}"
   environment = "${var.environment}"
-  domain = "recording.${var.environment}.${var.domain}",
+  domain = "recording.fm-orbba.com",
   delegation_set_id = "${var.delegation_set_id}"
   instance_type = "${var.media_instance_type}"
   ami_id = "${var.recording_ami_id}"
   vpc_id = "${module.vpc.vpc_id}"
   subnet_id = "${module.vpc.subnet_id}"
   public_key = "${file("keys/webrtc-core-recording-ubuntu.pub")}"
-  allowed_webmin_cidr_blocks = ["74.121.33.9/32"]
-  allowed_ssh_cidr_blocks = ["74.121.33.9/32"]
 }
 
 module "demo" {
   source = "../module-demo"
+  prefix = "${var.prefix}"
   owner = "${var.owner}"
   component = "${var.component}"
   role_group = "${var.role_group}"
   environment = "${var.environment}"
-  domain = "demo.${var.environment}.${var.domain}",
+
+  domain = "demo.fm-orbba.com",
   delegation_set_id = "${var.delegation_set_id}"
   instance_type = "${var.demo_instance_type}"
   ami_id = "${var.demo_ami_id}"
   vpc_id = "${module.vpc.vpc_id}"
   subnet_id = "${module.vpc.subnet_id}"
   public_key = "${file("keys/webrtc-core-demo-ubuntu.pub")}"
-  allowed_webmin_cidr_blocks = ["74.121.33.9/32"]
-  allowed_ssh_cidr_blocks = ["74.121.33.9/32"]
 }

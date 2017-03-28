@@ -26,16 +26,8 @@
   user:
     name: teamcity
     group: teamcity
-    createhome: yes
+    createhome: no
     system: yes
-
-- name: copy environment variables for teamcity user
-  copy:
-    src: files/home/teamcity/.pam_environment
-    dest: /home/teamcity/.pam_environment
-    owner: teamcity
-    group: teamcity
-    mode: 0770
 
 - name: ensure teamcity server config directories exist
   file:
@@ -122,13 +114,10 @@
 - name: copy database.properties template file
   template:
     src: templates/srv/.BuildServer/config/database.properties.j2
-    dest: "{{ item }}/database.properties"
+    dest: /srv/.BuildServer/config/database.properties
     owner: teamcity
     group: teamcity
     mode: 0660
-  with_items:
-    - "/srv/.BuildServer/config"
-    - "/home/teamcity"
 
 - name: set root password for MySQL user
   mysql_user:
@@ -152,75 +141,68 @@
 
 - name: copy teamcity init script
   copy:
-    src: "files/etc/init.d/{{ item }}"
-    dest: "/etc/init.d/{{ item }}"
+    src: files/etc/init.d/teamcity
+    dest: /etc/init.d/teamcity
     owner: teamcity
     group: teamcity
     mode: 0770
   notify:
     - restart teamcity
-    - restart teamcity agent
-  with_items:
-    - teamcity
-    - teamcity-agent
 
-- name: register teamcity services with rc.d
+- name: register teamcity service with rc.d
   service:
-    name: "{{ item }}"
+    name: teamcity
     enabled: yes
   notify:
     - restart teamcity
-    - restart teamcity agent
-  with_items:
-    - teamcity
-    - teamcity-agent
 
-- name: copy backup scripts
+- name: ensure teamcity config backup s3 bucket is created
+  s3_bucket:
+    name: "{{ teamcity_config_backup_bucket }}"
+    region: "{{ aws_region }}"
+    aws_access_key: "{{ aws_access_key_id }}"
+    aws_secret_key: "{{ aws_secret_access_key }}"
+
+- name: copy teamcity config from s3
+  s3:
+    mode: get
+    region: "{{ aws_region }}"
+    aws_access_key: "{{ aws_access_key_id }}"
+    aws_secret_key: "{{ aws_secret_access_key }}"
+    bucket: "{{ teamcity_config_backup_bucket }}"
+    object: "{{ teamcity_config_backup_object }}"
+    dest: /srv/.BuildServer/config
+    overwrite: always
+  register: result
+  failed_when: "result | failed and 'does not exist' not in result.msg"
+
+- name: copy teamcity config backup script
   template:
-    src: "templates/usr/local/bin/{{ item }}.j2"
-    dest: "/usr/local/bin/{{ item }}"
+    src: templates/usr/local/bin/backup-teamcity-config.j2
+    dest: /usr/local/bin/backup-teamcity-config
     owner: teamcity
     group: teamcity
     mode: 0770
-  with_items:
-    - backup
-    - restore
 
-- name: add cron job to restore config from backup on first reboot
+- name: add cron job to run config backup script
   cron:
-    job: /usr/local/bin/restore
+    job: /usr/local/bin/backup-teamcity-config
     user: teamcity
-    special_time: reboot
-
-- name: add cron job to backup config once per day
-  cron:
-    job: /usr/local/bin/backup
-    user: teamcity
-    hour: "{{ teamcity_backup_hour }}"
-    minute: "{{ teamcity_backup_minute }}"
+    minute: "{{ teamcity_config_backup_interval }}"
 
 - name: add AWS credentials to sudoers env_keep
   lineinfile:
     dest: /etc/sudoers
-    line: "Defaults env_keep+=\"AWS_DEFAULT_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY JAVA_HOME\""
-
-- name: ensure .ssh directory exists for teamcity user
-  file:
-    path: /home/teamcity/.ssh
-    state: directory
-    owner: teamcity
-    group: teamcity
-    mode: 0400
+    line: "Defaults env_keep+=AWS_DEFAULT_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY"
 
 - name: ensure deployment private key exists on remote host
   copy:
-    src: files/home/teamcity/.ssh/orbba_OrbbaWebRTCJava_TeamCity
-    dest: /home/teamcity/.ssh/orbba_OrbbaWebRTCJava_TeamCity
+    src: files/orbba_OrbbaWebRTCJava_TeamCity
+    dest: ~/.ssh/orbba_OrbbaWebRTCJava_TeamCity
     mode: 400
 
 - name: ensure deployment public key exists on remote host
   copy:
-    src: files/home/teamcity/.ssh/orbba_OrbbaWebRTCJava_TeamCity.pub
-    dest: /home/teamcity/.ssh/orbba_OrbbaWebRTCJava_TeamCity.pub
+    src: files/orbba_OrbbaWebRTCJava_TeamCity.pub
+    dest: ~/.ssh/orbba_OrbbaWebRTCJava_TeamCity.pub
     mode: 400
-

@@ -12,15 +12,13 @@
 count=0
 while [ $count -le 5 ]
 do
-    ansible-galaxy install \
+    ansible-galaxy \
+        install Datadog.datadog \
         ansiblebit.oracle-java \
         ansiblebit.launchpad-ppa-webupd8 \
-        Datadog.datadog \
         franklinkim.environment \
         geerlingguy.apache \
-        geerlingguy.nodejs \
-        geerlingguy.ntp \
-        hswong3i.webmin
+        geerlingguy.nodejs
 
     if [ $? -eq 0 ]
     then

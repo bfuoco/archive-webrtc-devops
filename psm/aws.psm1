@@ -1,13 +1,13 @@
-<#
-Tests whether or not the AWS CLI tools are installed.
-#>
 function Test-AwsCli
 {
+    $ErrorActionPreference = "Stop"
+
     Write-Host "`nChecking AWS CLI tools installation:"
 
     $AwsLocation = Get-Command "aws" -ErrorAction "SilentlyContinue"
     if (-Not ($AwsLocation))
     {
+        Write-Host ""
         throw "AWS CLI tools are not installed or are not in PATH."
     }
     
@@ -20,6 +20,7 @@ function Test-AwsCli
     }
     else
     {
+        Write-Host ""
         throw "Environment variable AWS_DEFAULT_REGION is not set."
     }
     
@@ -29,6 +30,7 @@ function Test-AwsCli
     }
     else
     {
+        Write-Host ""
         throw "Environment variable AWS_ACCESS_KEY_ID is not set."
     }
 
@@ -38,6 +40,7 @@ function Test-AwsCli
     }
     else
     {
+        Write-Host ""
         throw "Environment variable AWS_SECRET_ACCESS_KEY variable is not set."
     }
 
@@ -47,25 +50,23 @@ function Test-AwsCli
     Write-Host "Using AWS command: $AwsExpression"
 
     $Result = Invoke-Expression $AwsExpression
-    if ($LastExitCode -ne 0)
-    {
+    if ($LastExitCode -ne 0) {
+        Write-Host ""
         throw "Your AWS credentials are invalid."
     }
 }
 
-<#
-Gets the current region ID as set in the environment variables.
-#>
 function Get-RegionId
 {
+    $ErrorActionPreference = "Stop"
+
     $Env:AWS_DEFAULT_REGION
 }
 
-<#
-Gets the name of the current region ID as set in the environment variables.
-#>
 function Get-RegionName
 {
+    $ErrorActionPreference = "Stop"
+
     $RegionId = $Env:AWS_DEFAULT_REGION
     $RegionId = $RegionId.ToLower()
     
@@ -92,199 +93,188 @@ function Get-RegionName
     $Name
 }
 
-<#
-Gets the ID of the AMI of the most recent Ubuntu 14.04 build.
-#>
 function Get-UbuntuAmiId
 {
-    $Filters = """Name=architecture,Values=x86_64"" ""Name=virtualization-type,Values=hvm"" ""Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd*"""
+    $ErrorActionPreference = "Stop"
 
-    $AwsExpression = "aws ec2 describe-images --filters $Filters --query ""reverse(sort_by(Images[*], &CreationDate))[0].[ImageId, Name, CreationDate]"" --output text"
+    $AwsExpression = "aws ec2 describe-images --filters " +
+        """Name=architecture,Values=x86_64"" " +
+        """Name=virtualization-type,Values=hvm"" " +
+        """Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd64*"" "
 
     Write-Host "`nRetrieving ID of most recent Ubuntu AMI:"
     Write-Host "Using AWS command: $AwsExpression"
     
-    $UbuntuAmiInfo = (Invoke-Expression $AwsExpression)
-    if ($LastExitCode -ne 0)
+    $AmiDataJson = [string]::Join("", (Invoke-Expression $AwsExpression))
+    $AmiData = ConvertFrom-Json $AmiDataJson;
+    
+    $MostRecent = $AmiData.Images[0]
+    $MostRecentDate = Get-Date $AmiData.Images[0].CreationDate
+    
+    for ($i = 1; $i -lt $AmiData.Images.Length; $i++)
     {
-        throw "Could not retrieve Ubuntu AMI Id."
+        $CurrentDate = Get-Date $AmiData.Images[$i].CreationDate
+        
+        if ($CurrentDate -gt $MostRecentDate)
+        {
+            $MostRecent = $AmiData.Images[$i]
+            $MostRecentDate = $CurrentDate
+        }
     }
-    elseif ($UbuntuAmiInfo -eq $Null -Or $UbuntuAmiInfo -eq "None")
-    {
-        throw "Could not retrieve Ubuntu AMI Id."
-    }
+    
+    Write-Host -ForegroundColor DarkGray "`tId      : $($MostRecent.ImageId)"
+    Write-Host -ForegroundColor DarkGray "`tName    : $($MostRecent.Name)"
+    Write-Host -ForegroundColor DarkGray "`tCreated : $($MostRecent.CreationDate)"
 
-    $UbuntuAmiInfo = $UbuntuAmiInfo.Split("`t")
-
-    Write-Host -ForegroundColor DarkGray "`tId      : $($UbuntuAmiInfo[0])"
-    Write-Host -ForegroundColor DarkGray "`tName    : $($UbuntuAmiInfo[1])"
-    Write-Host -ForegroundColor DarkGray "`tCreated : $($UbuntuAmiInfo[2])"
-
-    $UbuntuAmiInfo[0]
+    $MostRecent.ImageId
 }
 
-<#
-Gets the amazon account id of the current user.
-#>
 function Get-AccountId
 {
-    $AwsExpression = "aws sts get-caller-identity --query ""Arn"" --output text"
+    $ErrorActionPreference = "Stop"
+
+    $AwsExpression = "aws sts get-caller-identity"
     
     Write-Host "`nRetrieving account information from Amazon Web Services:"
     Write-Host "`Using AWS command: $AwsExpression"
 
-    $AccountInfo = (Invoke-Expression $AwsExpression).Split(":")
-
-    Write-Host -ForegroundColor DarkGray "`tAccountId : $($AccountInfo[4])"
-    Write-Host -ForegroundColor DarkGray "`tUsername  : $($AccountInfo[5])"
-
-    $AccountInfo[4]
+    $UserDataJson = [string]::Join("", (Invoke-Expression $AwsExpression))
+    $UserData = ConvertFrom-Json $UserDataJson;
+    
+    Write-Host -ForegroundColor DarkGray "`tAccount : $($UserData.Account)"
+    Write-Host -ForegroundColor DarkGray "`tArn     : $($UserData.ARN)"
+    
+    $UserData.Account
 }
 
-<#
-Copies the AMI ID for a role to its terraform configuration.
-#>
+function Get-AmiIds
+{
+    Param([string]$AccountId, [string]$Environment)
+    $ErrorActionPreference = "Stop"
+
+    $AwsExpression = "aws ec2 describe-images --owners $AccountId"
+    
+    Write-Host "`nRetrieving AMIs from Amazon Web Services."
+    Write-Host "Using AWS command: $AwsExpression"
+
+    $AmiDataJson = [string]::Join("", (Invoke-Expression $AwsExpression))
+    $AmiData = ConvertFrom-Json $AmiDataJson;
+
+    $Count = $AmiData.Images.Count;
+    Write-Host "Found $Count image(s).`n"
+
+    $Amis = @{}
+    $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding($False)
+
+    foreach ($Image in $AmiData.Images)
+    {
+        $CurrentAmi = @{Id = $Image.ImageId; Name = $Image.Name; Date = Get-Date $Image.CreationDate}
+
+        Write-Host "Processing image: $($CurrentAmi.Name)($($CurrentAmi.Id)), created: $($Image.CreationDate)"
+
+        $Role = $Null
+        foreach ($Tag in $Image.Tags)
+        {
+            if ($Tag.Key -eq "Role")
+            {
+                $Role = $Tag.Value
+                
+                Write-Host "Role tag found, image identified as ""$Role"" node."
+                
+                if ($Amis.ContainsKey($Role))
+                {
+                    if ($CurrentAmi.Date -gt $Amis.$Role.Date)
+                    {
+                        $Amis.$Role = $CurrentAmi;
+                        Write-Host "Replacing previous role with newer AMI."
+                    }
+                    else
+                    {
+                        Write-Host "Ignoring older AMI."
+                    }
+                }
+                else
+                {
+                    $Amis.Add($Role, $CurrentAmi)
+                }
+                
+                break;
+            }
+        }
+
+        if ($Role -eq $Null)
+        {
+            Write-Host "No role tag found, image is not an Orbba AMI, skipping."
+        }
+
+        Write-Host ""
+    }
+    
+    $Amis
+}
+
 function Copy-AmiId
 {
-    Param([string]$AccountId, [string]$RoleGroup, [string]$Role, [string]$Environment)
-
+    Param([string]$RoleGroup, [string]$Role, [string]$AmiId, [string]$Environment)
+    $ErrorActionPreference = "Stop"
+    
+    $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding($False)
+    
     if ($RoleGroup -eq "core")
     {
-        $RoleName = "$($RoleGroup):$($Role):$($Environment)"
-        $Filters = """Name=tag:Role,Values=$Role"" ""Name=tag:Environment,Values=$Environment"""
-        $OutPath = "terraform\$RoleGroup\main-$Environment\variables_$($Role)_override.tf"
-        $OutFile = "$($PWD)\$OutPath"
+        $OutFile = "$($PWD)\terraform\$RoleGroup\main-$Environment\variables_$($Role)_override.tf"
+        Write-Host "Writing $Role AMI $($RoleData.Name)($AmiId) to $OutFile"
+
+        [IO.File]::WriteAllLines($OutFile, "variable $($Role)_ami_id {`n  type = ""string""`n  default = ""$AmiId""`n}", $Utf8NoBomEncoding)
     }
     elseif ($RoleGroup -eq "meta")
     {
-        $RoleName = "$($RoleGroup):$($Role)"
-        $Filters = """Name=tag:Role,Values=$Role"""
-        $OutPath = "terraform\$RoleGroup\main\variables_$($Role)_override.tf"
-        $OutFile = "$($PWD)\$OutPath"
+        $OutFile = "$($PWD)\terraform\$RoleGroup\main\variables_$($Role)_override.tf"
+        Write-Host "Writing $Role AMI $($RoleData.Name)($AmiId) to $OutFile"
+
+        [IO.File]::WriteAllLines($OutFile, "variable $($Role)_ami_id {`n  type = ""string""`n  default = ""$AmiId""`n}", $Utf8NoBomEncoding)
     }
-
-    $AwsExpression = "aws ec2 describe-images --owners $AccountId --filters $Filters --query ""reverse(sort_by(Images[*], &CreationDate))[0].ImageId"" --output text"
-
-    Write-Host "`nRetrieving most recent AMI for $RoleName from Amazon Web Services."
-    Write-Host "Using AWS command: $AwsExpression"
-
-    $AmiId = Invoke-Expression $AwsExpression
-    if ($LastExitCode -ne 0)
+    else
     {
-        throw "An error occurred while querying an AMI image from AWS."
+        throw "Unknown role group."
     }
-
-    if ($AmiId -eq $Null -Or $AmiId -eq "None")
-    {
-        Write-Host "No AMI found for $RoleName."
-        return
-    }
-
-    Write-Host "`Found AMI for $($RoleName):"
-    Write-Host -ForegroundColor DarkGray "`tRole     : $RoleName"
-    Write-Host -ForegroundColor DarkGray "`tId       : $AmiId"
-    Write-Host -ForegroundColor DarkGray "`tOverride : $OutPath"
-
-    [IO.File]::WriteAllLines($OutFile, "variable $($Role)_ami_id {`n  type = ""string""`n  default = ""$AmiId""`n}")
 }
 
-<#
-Copies the id of the meta VPC to the terraform configuration for other environments.
-#>
 function Copy-VpcId
 {
     Param([string]$Environment)
+    $ErrorActionPreference = "Stop"
 
-    Write-Host "`nRetrieving ID of the meta VPC from Amazon Web Services."
+    Write-Host "`nRetrieving ID of meta VPC from Amazon Web Services."
 
-    $AwsCmd = "aws ec2 describe-vpcs --filters Name=tag:RoleGroup,Values=meta --query ""Vpcs[0].[VpcId, CidrBlock]"" --output text"
+    $AwsCmd =  "aws ec2 describe-vpcs --filters Name=tag:RoleGroup,Values=meta"
     Write-Host "Using AWS command: $AwsCmd"
 
-    $VpcInfo = Invoke-Expression $AwsCmd
-    if ($LastExitCode -ne 0)
+    $VpcDataJson = [string]::Join("", (Invoke-Expression $AwsCmd))
+    $VpcData = ConvertFrom-Json $VpcDataJson;
+
+    $Count = $VpcData.Vpcs.Count;
+    Write-Host "Found $Count vpcs(s).`n"
+
+    if ($Count -gt 1)
     {
-        throw "Could not copy VPC info for the meta role group."
+        Write-Host ""
+        throw "Found more than one VPC for the meta role group."
     }
-    elseif ($VpcInfo -eq $Null -Or $VpcInfo -eq "None")
+    elseif ($Count -eq 0)
     {
-        throw "No VPCs in the meta role group were found."
-    }
-
-    $VpcInfo = $VpcInfo.Split("`t")
-    $OutPath = "terraform\core\main-$($Environment)\variables_meta_override.tf"
-    $OutFile = "$($PWD)\$OutPath"
-
-    Write-Host -ForegroundColor DarkGray "`tId       : $($VpcInfo[0])"
-    Write-Host -ForegroundColor DarkGray "`tCidr     : $($VpcInfo[1])"
-    Write-Host -ForegroundColor DarkGray "`tOverride : $OutPath"
-
-    [IO.File]::WriteAllLines($OutFile, "variable meta_vpc_id {`n  type = ""string""`n  default = ""$($VpcInfo[0])""`n}")
-}
-
-function Upload-Jar
-{
-    Param([string]$Environment, [string]$Role)
-
-    Write-Host "`nUploading jar for $Role"
-
-    $AwsCmd = "aws s3 cp ../out/artifacts/$Role.jar s3://orbba-webrtc/core/$Environment/$Role.jar"
-    Write-Host "Using AWS command: $AwsCmd"
-
-    Invoke-Expression $AwsCmd
-    if ($LastExitCode -ne 0)
-    {
-        throw "Could not upload the $Role JAR file."
-    }
-}
-
-function Upload-Folder
-{
-    Param([string]$Environment, [string]$Role)
-
-    Write-Host "`nSyncing directory for $Role"
-
-    $AwsCmd = "aws s3 sync ../services/signaling s3://orbba-webrtc/core/$Environment/$Role --size-only --delete"
-    Write-Host "Using AWS command: $AwsCmd"
-
-    Invoke-Expression $AwsCmd
-    if ($LastExitCode -ne 0)
-    {
-        throw "Could not sync the $Role directory."
-    }
-}
-
-function Restart-Environment
-{
-    Param([string]$Environment)
-
-    Write-Host "`nRetrieving active instances."
-
-    $AwsCmd = "aws ec2 describe-instances --filter ""Name=tag:Environment,Values=$Environment"" --query ""Reservations[*].Instances[*].[InstanceId, Tags[?Key=='Role'].Value]"" --output text"
-    Write-Host "Using AWS command: $AwsCmd"
-
-    $InstanceInfo = Invoke-Expression $AwsCmd
-    if ($LastExitCode -ne 0)
-    {
-        throw "Could not upload the $Role JAR file."
+        Write-Host ""
+        throw "Could not find a VPC for the meta role group."
     }
 
-    $InstanceIds = @(0) * ($InstanceInfo.Length / 2)
+    $VpcId = $VpcData.Vpcs[0].VpcId
 
-    Write-Host "`nRestarting the following machines:"
-    for ($i = 0; $i -lt $InstanceInfo.Length; $i += 2)
-    {
-        $InstanceId = $InstanceInfo[$i]
-        $InstanceRole = $InstanceInfo[$i + 1]
+    $OutFile = "$($PWD)\terraform\core\main-$($Environment)\variables_meta_override.tf"
+    Write-Host "Writing meta VPC ID $VpcId to $OutFile"
 
-        $InstanceIds[$i / 2] = $InstanceId
-        Write-Host "`t$InstanceId - $InstanceRole"
-    }
+    $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding($False)
 
-    $InstanceIds = $InstanceIds -Join " "
-
-    $AwsCmd = "aws ec2 reboot-instances --instance-ids $InstanceIds"
-    Write-Host "`nUsing AWS command: $AwsCmd"
-    Invoke-Expression $AwsCmd
+    [IO.File]::WriteAllLines($OutFile, "variable meta_vpc_id {`n  type = ""string""`n  default = ""$VpcId""`n}", $Utf8NoBomEncoding)
 }
 
 Export-ModuleMember -function Test-AwsCli
@@ -292,8 +282,6 @@ Export-ModuleMember -function Get-RegionId
 Export-ModuleMember -function Get-RegionName
 Export-ModuleMember -function Get-UbuntuAmiId
 Export-ModuleMember -function Get-AccountId
+Export-ModuleMember -function Get-AmiIds
 Export-ModuleMember -function Copy-AmiId
 Export-ModuleMember -function Copy-VpcId
-Export-ModuleMember -function Upload-Jar
-Export-ModuleMember -function Upload-Folder
-Export-ModuleMember -function Restart-Environment

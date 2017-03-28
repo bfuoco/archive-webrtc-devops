@@ -14,7 +14,6 @@
     - franklinkim.environment
     - ansiblebit.launchpad-ppa-webupd8
     - ansiblebit.oracle-java
-    - geerlingguy.ntp
     - role: Datadog.datadog
       become: true
       become_method: sudo

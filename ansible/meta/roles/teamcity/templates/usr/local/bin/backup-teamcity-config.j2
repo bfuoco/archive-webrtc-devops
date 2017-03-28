@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+if aws s3 ls "s3://{{ teamcity_config_backup_bucket }}" 2>&1 | grep -q 'NoSuchBucket'
+then
+    aws s3api create-bucket --bucket {{ teamcity_config_backup_bucket }}
+fi
+
+aws s3 sync /srv/.BuildServer/config s3://{{ teamcity_config_backup_bucket }}/{{ teamcity_config_backup_object }} --delete --sse --no-guess-mime-type

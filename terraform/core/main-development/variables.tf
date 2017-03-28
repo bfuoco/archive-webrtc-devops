@@ -1,3 +1,9 @@
+/* A prefix to apply to all component names, ie: orbba
+*/
+variable prefix {
+  type = "string"
+}
+
 /* The application component that this resource is a part of, ie: webrtc.
    This will be included as part of the resource name.
 */
@@ -25,27 +31,15 @@ variable environment {
   type = "string"
 }
 
-/* The main domain name.
-*/
-variable domain {
-  type = "string"
-}
-
-/* The CIDR block for the environment's VPC.
-*/
-variable vpc_cidr_block {
-  type = "string"
-}
-
 /* The id of the delegation set to use for dns resolution.
 */
 variable delegation_set_id {
   type = "string"
 }
 
-/* The id of the meta role group's VPC, used for VPC peering.
+/* The id of the build role group's VPC, used for VPC peering.
 */
-variable meta_vpc_id {
+variable build_vpc_id {
   type = "string"
 }
 

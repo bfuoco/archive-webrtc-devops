@@ -1,15 +1,11 @@
 #!/bin/sh
 # /etc/init.d/teamcity -  startup script for teamcity
 export TEAMCITY_DATA_PATH="/srv/.BuildServer"
-export PATH="$PATH:/sbin"
 
 case $1 in
   start)
-    if [ -f  /home/teamcity/.first-run ]
-    then
-        echo "Starting TeamCity"
-        start-stop-daemon --start -c teamcity --exec /srv/TeamCity/bin/teamcity-server.sh start
-    fi
+    echo "Starting TeamCity"
+    start-stop-daemon --start -c teamcity --exec /srv/TeamCity/bin/teamcity-server.sh start
     ;;
 
   stop)

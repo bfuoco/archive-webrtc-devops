@@ -1,211 +1,64 @@
-function Test-SecretsAvailable
-{
-    if (-Not (Test-Path secrets.txt))
-    {
-        throw " `nSecrets file does not exist."
-    }
-    
-    $Lines = Get-Content secrets.txt
-    foreach ($Line in $Lines)
-    {
-        if ([string]::IsNullOrWhiteSpace($Line))
-        {
-            continue;
-        }
-        
-        $Path = $Line
-        $PathExists = Test-Path $Path
-        
-        if (-Not $PathExists)
-        {
-            throw "Secrets have not been decrypted. Run the decrypt command."
-        }
-    }
-}
-
 <#
-Converts a secure string to a regular string.
 #>
-function Convert-SecureString
+function Test-Aes
 {
-    Param([SecureString]$Value)
-    
-    if ($Value -eq $Null)
+    [CmdletBinding()]
+    Param()
+
+    Write-Host "`nChecking for AES environment variables:"
+    if (Test-Path Env:ORBBA_AES256_KEY)
     {
-        throw "Value cannot be null."
-    }
-    
-    [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value))
-}
-
-<#
-Converts a byte array to a base-16 string.
-#>
-function Get-HexString
-{
-    Param([byte[]]$Data)
-    
-    ([BitConverter]::ToString($Data)).ToLower().Replace("-", "")
-}
-
-<#
-Removes trailing null characters from a byte array.
-#>
-function Remove-NullTerminators
-{
-    Param([byte[]]$Data)
-    
-    for ($i = $Data.Length - 1; $i -gt 0; $i--)
-    {
-        if ($Data[$i] -ne 0x00)
-        {
-            break;
-        }
-    }
-    
-    $Size = $i + 1
-    $DataTrimmed = New-Object byte[] $Size
-    
-    [Buffer]::BlockCopy($Data, 0, $DataTrimmed, 0, $Size)
-    
-    $DataTrimmed
-}
-
-<#
-Gets the passphrase used to encrypt/decrypt secrets.
-#>
-function Get-Passphrase
-{
-    Param([bool]$Force)
-    $OrbbaAppData = "$($Env:LOCALAPPDATA)\Orbba"
-    $OrbbaKeyFile = "$OrbbaAppData\orbba-passphrase-key"
-    $OrbbaPassphraseEncrypted = $Env:ORBBA_PASSPHRASE_ENCRYPTED
-    
-    $ExpectedPassphraseHashBase16 = [IO.File]::ReadAllLines("$PWD/secrets.sha256")
-    
-    if (-Not [string]::IsNullOrWhiteSpace($OrbbaPassphraseEncrypted))
-    {
-        Write-Host "`nAttempting to retrieve cached passphrase."
-        
-        try
-        {
-            if (-Not (Test-Path $OrbbaKeyFile))
-            {
-                throw "No key file at $OrbbaKeyFile"
-            }
-            
-            $PassphraseKeyBytes = [IO.File]::ReadAllBytes($OrbbaKeyFile)
-            
-            $PassphraseSecretWithHashAndIVBase64 = $Env:ORBBA_PASSPHRASE_ENCRYPTED
-            $PassphraseSecretWithHashAndIVBytes = [Convert]::FromBase64String($PassphraseSecretWithHashAndIVBase64)
-            $PassphraseHashBytes = $PassphraseSecretWithHashAndIVBytes[0..31]
-            $PassphraseIVBytes = $PassphraseSecretWithHashAndIVBytes[32..47]
-            
-            $Aes = New-Object Security.Cryptography.AesManaged
-            $Aes.Mode = [Security.Cryptography.CipherMode]::CBC
-            $Aes.Padding = [Security.Cryptography.PaddingMode]::Zeros
-            $Aes.BlockSize = 128
-            $Aes.KeySize = 256
-            $Aes.Key = $PassphraseKeyBytes
-            $Aes.IV = $PassphraseIVBytes
-            
-            $Decryptor = $Aes.CreateDecryptor();
-            $PassphraseBytes = $Decryptor.TransformFinalBlock($PassphraseSecretWithHashAndIVBytes, 48, $PassphraseSecretWithHashAndIVBytes.Length - 48);
-            $PassphraseBytes = Remove-NullTerminators $PassphraseBytes
-            
-            $Sha256 = [Security.Cryptography.HashAlgorithm]::Create("SHA256")
-            $CheckHashBytes = $Sha256.ComputeHash($PassphraseBytes);
-            
-            $Aes.Dispose()
-            $Sha256.Dispose()
-            $Decryptor.Dispose()
-
-            if ((Compare-Object $PassphraseHashBytes $CheckHashBytes).Length -gt 0)
-            {
-                throw "Could not decrypt the passphrase."
-            }
-            $PassphraseHashBase16 = Get-HexString $PassphraseHashBytes
-            if ($PassphraseHashBase16 -ne $ExpectedPassphraseHashBase16)
-            {
-                throw "Cached passphrase did not match the expected passphrase. Removing from cache."
-            }
-            
-            Write-Host "Passphrase retrieved successfully."
-            [Text.Encoding]::UTF8.GetString($PassphraseBytes)
-        }
-        catch
-        {
-            Write-Host "Failure during decryption of cached passphrase. Clearing passphrase."
-            Remove-Item Env:ORBBA_PASSPHRASE_ENCRYPTED
-            
-            throw $_.Exception
-        }
+        Write-Host -ForegroundColor DarkGray "`tORBBA_AES256_KEY : <<hidden>>"
     }
     else
     {
-        Write-Host "`nNo passphrase cached."
-
-        $Passphrase = Read-Host -AsSecureString "`nEnter a passphrase"
-        $PassphraseConfirm = Read-Host -AsSecureString "Confirm the passphrase"
-
-        $Passphrase = Convert-SecureString $Passphrase
-        $PassphraseConfirm = Convert-SecureString $PassphraseConfirm
-
-        if ($Passphrase -ne $PassphraseConfirm)
-        {
-            throw "Passphrases do not match."
-        }
-
-        $PassphraseBytes = [Text.Encoding]::UTF8.GetBytes($Passphrase)
-        
-        $Sha256 = [Security.Cryptography.HashAlgorithm]::Create("SHA256")
-        $PassphraseHashBytes = $Sha256.ComputeHash($PassphraseBytes);
-        $PassphraseHashBase16 = Get-HexString $PassphraseHashBytes
-        $PassphraseHashBase16Bytes = [Text.Encoding]::UTF8.GetBytes($PassphraseHashBase16)
-        
-        if (-Not $Force)
-        {
-            $PassphraseHashBase16 = Get-HexString $PassphraseHashBytes
-            if ($PassphraseHashBase16 -ne $ExpectedPassphraseHashBase16)
-            {
-                throw "Passphrase did not match the expected passphrase. Run this command again with the -Force parameter to override this."
-            }
-        }
-        
-        $Sha256.Dispose()
-        
-        [IO.File]::WriteAllBytes("$PWD/secrets.sha256", $PassphraseHashBase16Bytes)
-        
-        $Aes = New-Object Security.Cryptography.AesManaged
-        $Aes.Mode = [Security.Cryptography.CipherMode]::CBC
-        $Aes.Padding = [Security.Cryptography.PaddingMode]::Zeros
-        $Aes.BlockSize = 128
-        $Aes.KeySize = 256
-
-        New-Item -ItemType Directory -Force $OrbbaAppData | Out-Null
-        [IO.File]::WriteAllBytes($OrbbaKeyFile, $Aes.Key)
-     
-        $Encryptor = $Aes.CreateEncryptor()
-        $PassphraseSecretBytes = $Encryptor.TransformFinalBlock($PassphraseBytes, 0, $PassphraseBytes.Length)
-        $PassphraseSecretWithHashAndIVBytes = $PassphraseHashBytes + $Aes.IV + $PassphraseSecretBytes
-        
-        $Aes.Dispose()
-        $Encryptor.Dispose()       
-        
-        $PassphraseSecretWithHashAndIVBase64 = [Convert]::ToBase64String($PassphraseSecretWithHashAndIVBytes)
-        
-        [Environment]::SetEnvironmentVariable("ORBBA_PASSPHRASE_ENCRYPTED", $PassphraseSecretWithHashAndIVBase64, "User")
-        [Environment]::SetEnvironmentVariable("ORBBA_PASSPHRASE_ENCRYPTED", $PassphraseSecretWithHashAndIVBase64, "Process")
-        
-        $Passphrase
+        Write-Host ""
+        throw "Environment variable ORBBA_AES256_KEY is not set."
     }
 }
 
-<#
-Gets an array of files that should be encrypted, based on the values in the secrets.txt file.
-#>
-function Get-FilesToEncrypt
+function Test-Key
 {
+    [CmdletBinding()]
+    Param([string]$Key)
+
+    $KeyBytes = [System.Convert]::FromBase64String($Key)
+
+    $Sha256 = [Security.Cryptography.HashAlgorithm]::Create("SHA256")
+    $Sha256Bytes = $Sha256.ComputeHash($KeyBytes);
+    $Sha256Hash = -Join ($Sha256Bytes | ForEach {"{0:x2}" -f $_})
+    
+    $ExpectedHash = "7ed9bba99a6f92fbf7a9f00ccae21d9cf65c0571e8b91afc6a10139c284a15be"
+    if ($Sha256Hash -eq $ExpectedHash)
+    {
+        Write-Host "`nKey matches expected SHA256 hash."
+        Write-Host -ForegroundColor DarkGray "`tHash     : $Sha256Hash"
+        Write-Host -ForegroundColor DarkGray "`tExpected : $ExpectedHash"
+    }
+    else
+    {
+        Write-Host "`nKey does not match expected SHA256 hash."
+        Write-Host -ForegroundColor DarkGray "`tHash     : $Sha256Hash"
+        Write-Host -ForegroundColor DarkGray "`tExpected : $ExpectedHash"
+        
+        Write-Host ""
+        throw "Key specified in ORBBA_AES256_KEY does not match expected SHA256 hash."
+    }   
+}
+
+<#
+Gets an array of files that are considered "secret" - files that should be encrypted when committed
+to the repository.
+
+An error will be thrown if the secrets file doesn't exist or if any of the files listed in the
+secrets file do not exist.
+
+Returns an array of secret files.
+#>
+function Get-SecretFiles
+{
+    $ErrorActionPreference = "Stop"
+    
     if (-Not (Test-Path secrets.txt))
     {
         throw " `nSecrets file does not exist."
@@ -232,187 +85,108 @@ function Get-FilesToEncrypt
             throw " `nSecrets file $Line does not exist."
         }
         
-        if ($PathExists)
-        {
-            $Files.Add($Path)
-        }
+        $Files.Add($Path)
     }
     
     $Files
 }
 
 <#
-Gets an array of files that should be encrypted, based on the values in the secrets.txt file.
+Checks whether or not a secret file is encrypted.
+
+Returns whether or not the file is encrypted.
 #>
-function Get-FilesToDecrypt
+function Check-Encrypted
 {
-    if (-Not (Test-Path secrets.txt))
+    Param([string]$File)
+    $ErrorActionPreference = "Stop"
+    
+    Write-Host -NoNewLine "Checking $($File): " 
+    
+    if (Test-Path $File)
     {
-        throw " `nSecrets file does not exist."
+        Write-Host "not encrypted"
+        $False
     }
-    
-    $Files = New-Object Collections.Generic.List[string]
-    $Lines = Get-Content secrets.txt
-    
-    foreach ($Line in $Lines)
+    else
     {
-        if ([string]::IsNullOrWhiteSpace($Line))
+        if (Test-Path "$File.encrypted")
         {
-            continue;
+            Write-Host "encrypted"
+            $True
         }
-        
-        $Path = $Line
-        $EncryptedPath = "$Line.encrypted"
-        
-        $PathExists = Test-Path $Path
-        $EncryptedPathExists = Test-Path $EncryptedPath
-        
-        if (-Not $PathExists -And -Not $EncryptedPathExists)
+        else
         {
-            throw " `nSecrets file $Line does not exist."
-        }
-        
-        if ($EncryptedPathExists)
-        {
-            $Files.Add($Path)
+            throw " `nCould not find $File."
         }
     }
-    
-    $Files
 }
 
-<#
-Encrypts a file with the provided passphrase.
-
-The passphrase is encoded using PDKDF2 to create an 256-bit AES encryption key. If an encrypted
-file already exists, the the hash of the current file will be checked against that of the
-encrypted file. If there are no changes, the file will not be re-encrypted.
-#>
 function Encrypt-File
 {
-    Param([string]$File, [string]$Passphrase, [bool]$Force)
+    [CmdletBinding()]
+    Param([string]$File, [string]$Key)
     
-    $FilePath = "$PWD\$File"    
-    Write-Host -NoNewLine "Encrypting $($File): "
+    $Secret = (Get-Content $File) -Join "`n"
+    $SecretBytes = [System.Text.Encoding]::UTF8.GetBytes($Secret)
     
-    $DataBytes = [IO.File]::ReadAllBytes($FilePath)
-    $PassphraseBytes = [Text.Encoding]::UTF8.GetBytes($Passphrase)
-    $SaltBytes = New-Object Byte[] @(8)
-    
-    $Sha256 = [Security.Cryptography.HashAlgorithm]::Create("SHA256")
-    $HashBytes = $Sha256.ComputeHash($DataBytes);
-    
-    if (-Not $Force) 
-    {
-        if (Test-Path "$FilePath.encrypted")
-        {
-            $CheckBytes = [IO.File]::ReadAllBytes("$FilePath.encrypted")
-            $CheckHashBytes = $CheckBytes[0..31]
-            
-            if ((Compare-Object $HashBytes $CheckHashBytes).Length -eq 0)
-            {
-                Write-Host "skipped"
-                return
-            }
-        }
-    }
-        
-    $Rng = New-Object Security.Cryptography.RNGCryptoServiceProvider
-    $Rng.GetBytes($SaltBytes)
-    
-    $Pbkdf2 = New-Object Security.Cryptography.Rfc2898DeriveBytes @($PassphraseBytes, $SaltBytes, 65536)
-    $KeyBytes = $Pbkdf2.GetBytes(16)
-    
-    $Aes = New-Object Security.Cryptography.AesManaged
-    $Aes.Mode = [Security.Cryptography.CipherMode]::CBC
-    $Aes.Padding = [Security.Cryptography.PaddingMode]::Zeros
+    $KeyBytes = [System.Convert]::FromBase64String($Key)
+
+    $Aes = New-Object "System.Security.Cryptography.AesManaged"
+    $Aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+    $Aes.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
     $Aes.BlockSize = 128
     $Aes.KeySize = 256
     $Aes.Key = $KeyBytes
-    
+
     $Encryptor = $Aes.CreateEncryptor()
-    $DataSecretBytes = $Encryptor.TransformFinalBlock($DataBytes, 0, $DataBytes.Length)
-    $DataSecretWithHashAndIVAndSaltBytes = $HashBytes + $Pbkdf2.Salt + $Aes.IV + $DataSecretBytes
-    
-    $Rng.Dispose()
-    $Sha256.Dispose()
+    $SecretEncrypted = $Encryptor.TransformFinalBlock($SecretBytes, 0, $SecretBytes.Length)
+    $SecretEncryptedWithIV = $Aes.IV + $SecretEncrypted
+
     $Aes.Dispose()
-    $Pbkdf2.Dispose()
-    
-    [IO.File]::WriteAllBytes("$PWD\$File.encrypted", $DataSecretWithHashAndIVAndSaltBytes)
-    
-    Write-Host "complete"
+    $SecretBase64 = [System.Convert]::ToBase64String($SecretEncryptedWithIV)
+
+    Write-Host "Encrypting to: $File.encrypted"
+    [System.IO.File]::WriteAllLines("$PWD\$File.encrypted", $SecretBase64)
+
+    Remove-Item "$File"
 }
 
-<#
-Decrypts a file with the provided passphrase.
-
-The encryption key is derived using PDKDF2. The salt and IV are prepended to the cipher text.
-After decryption, a hash comparison will be performed. If the hash does not match the original
-data, then the operation will terminate with an error.
-#>
 function Decrypt-File
 {
-    Param([string]$File, [string]$Passphrase)
+    Param([string]$File, [string]$Key)
+    $ErrorActionPreference = "Stop"
+
+    $SecretEncryptedBase64 = Get-Content "$File.encrypted"
+    $SecretEncryptedBytes = [System.Convert]::FromBase64String($SecretEncryptedBase64)
+
+    $KeyBytes = [System.Convert]::FromBase64String($Key)
     
-    $FilePath = "$PWD\$File"
-    Write-Host -NoNewLine "Decrypting $File.encrypted: "
-    
-    $DataSecretWithHashAndIVAndSaltBytes = [IO.File]::ReadAllBytes("$FilePath.encrypted")
-    
-    $PassphraseBytes = [Text.Encoding]::UTF8.GetBytes($Passphrase)
-    $HashBytes = $DataSecretWithHashAndIVAndSaltBytes[0..31]
-    $SaltBytes = $DataSecretWithHashAndIVAndSaltBytes[32..39]
-    $IVBytes = $DataSecretWithHashAndIVAndSaltBytes[40..55]
-   
-    $Pbkdf2 = New-Object Security.Cryptography.Rfc2898DeriveBytes @($PassphraseBytes, $SaltBytes, 65536)
-    $KeyBytes = $Pbkdf2.GetBytes(16)
-    
-    $Aes = New-Object Security.Cryptography.AesManaged
-    $Aes.Mode = [Security.Cryptography.CipherMode]::CBC
-    $Aes.Padding = [Security.Cryptography.PaddingMode]::Zeros
+    $IV = $SecretEncryptedBytes[0..15]
+
+    $Aes = New-Object "System.Security.Cryptography.AesManaged"
+    $Aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+    $Aes.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
     $Aes.BlockSize = 128
     $Aes.KeySize = 256
     $Aes.Key = $KeyBytes
-    $Aes.IV = $IVBytes
+    $Aes.IV = $IV
 
     $Decryptor = $Aes.CreateDecryptor();
-    $DataBytes = $Decryptor.TransformFinalBlock($DataSecretWithHashAndIVAndSaltBytes, 56, $DataSecretWithHashAndIVAndSaltBytes.Length - 56);
-    
-    for ($i = $DataBytes.Length - 1; $i -gt 0; $i--)
-    {
-        if ($DataBytes[$i] -ne 0x00)
-        {
-            break;
-        }
-    }
-    
-    $DataSize = $i + 1
-    $DataBytesTrimmed = New-Object byte[] $DataSize
-    
-    [Buffer]::BlockCopy($DataBytes, 0, $DataBytesTrimmed, 0, $DataSize)
-    
-    $Sha256 = [Security.Cryptography.HashAlgorithm]::Create("SHA256")
-    $CheckHashBytes = $Sha256.ComputeHash($DataBytesTrimmed);
-    
-    if ((Compare-Object $HashBytes $CheckHashBytes).Length -gt 0)
-    {
-        throw "Invalid passphrase was entered."
-    }        
-   
-    $Sha256.Dispose()
+    $Secret = $Decryptor.TransformFinalBlock($SecretEncryptedBytes, 16, $SecretEncryptedBytes.Length - 16);
     $Aes.Dispose()
-    $Pbkdf2.Dispose()
-    
-    [IO.File]::WriteAllBytes("$PWD\$File", $DataBytesTrimmed)
-    
-    Write-Host "complete"
+
+    $SecretPlainText = [System.Text.Encoding]::UTF8.GetString($Secret).Trim([char]0)
+
+    Write-Host "Decrypting to: $File"
+    [System.IO.File]::WriteAllLines("$PWD\$File", "$SecretPlainText")
+
+    #Remove-Item "$File.encrypted"
 }
 
-Export-ModuleMember -function Test-SecretsAvailable
-Export-ModuleMember -function Convert-SecureString
-Export-ModuleMember -function Get-Passphrase
-Export-ModuleMember -function Get-FilesToEncrypt
-Export-ModuleMember -function Get-FilesToDecrypt
+Export-ModuleMember -function Test-Aes
+Export-ModuleMember -function Test-Key
+Export-ModuleMember -function Get-SecretFiles
+Export-ModuleMember -function Check-Encrypted
 Export-ModuleMember -function Encrypt-File
 Export-ModuleMember -function Decrypt-File

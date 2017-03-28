@@ -2,4 +2,3 @@
 terraform.tfstate
 terraform.tfstate.backup
 variables_*_override.tf
-*.pem

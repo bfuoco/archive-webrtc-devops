@@ -39,7 +39,7 @@ version of the Windows Management Framework.
 The scripts require that the AWS command line interface is installed and available on the current user's `PATH`. In
 addition, several environment variables must be set:
 
-- **AWS_DEFAULT_REGION**: The AWS region where our infrastructure resides, `us-west-2`.
+- **AWS_DEFAULT_REGION**:  The AWS region where our infrastructure resides, `us-west-1`.
 - **AWS_ACCESS_KEY_ID**: The id of the AWS access key that will be used to manage AWS resources. This should be the id
 of the provisioning user, not your personal access key id.
 - **AWS_SECRET_ACCESS_KEY**: The AWS secret key that is used to verify the identity of the provisioning user. Again,
@@ -55,7 +55,7 @@ user's `PATH`.
 
 [[Download]](https://packer.io/downloads.html)
 
-#### Terraform 0.7.2+ ####
+#### Terraform 0.7.0+ ####
 
 Terraform is a command line utility that is used to spin up and destroy infrastructure. It is used to manage the
 lifecycle of various AWS resources. A recent version of Terraform must be installed and available on the current user's
@@ -118,10 +118,10 @@ detailed information, please refer to the documentation of the tool in question.
 ### PowerShell
 
 PowerShell is modern Windows' scripting language. All PowerShell scripts are written without using aliases. While this
-may seem unnecessarily verbose, use of aliases can confusing, as seen [here](https://github.com/PowerShell/PowerShell/pull/1901).
+may seem unnecessarily verbose, use of aliases can confusing, as can be seen [here](https://github.com/PowerShell/PowerShell/pull/1901).
 
-The core PowerShell scripts are available in the root `scripts` directory. These scripts make use of several re-usable
-modules, which are located in the `scripts/psm` folder.
+The core PowerShell scripts are available in the root `/scripts` directory. These scripts make use of several re-usable
+modules, which are located in the `/scripts/psm` folder.
 
 ### Packer
 
@@ -182,68 +182,9 @@ problems during the execution of a script.
 
 ### Ansible
 
-Ansible is a configuration management tool. Through Packer, we use this tool to define what applications should be
-installed on a given host and define any other parameters that may need to be configured. Packer will create a temporary
-EC2 instance, upload our Ansible files, and execute them on the remote host. Afterwards, Packer will shut down the EC2
-instance and use it to create an AMI.
-
-Ansible organizes its directives into YAML files that are referred to as `playbooks`. Theses playbooks are located in
-the `scripts/ansible/[roleGroup]/` directories. The project currently only has two playbooks, one for each role group.
-These are in the `site.yml` file for each role group.
-
-Viewing the core role group's `site.yml` playbook, you will see a number of elements, each of which is referred to as a 
-`play`. It will look something like this:
-
-```
-- name: apply common configuration to all nodes
-  hosts: all
-  vars_files:
-    - vars/secret.yml
-  roles:
-    - ansiblebit.launchpad-ppa-webupd8
-    - ansiblebit.oracle-java
-    ...
-```
-
-The first thing to understand about this `play` is that the `name` is arbitrary. It only affects what is shown in the
-console. The second thing to understand is that it applies to all hosts, as you may have guessed by the
-`hosts: all` attribute. The set of all hosts is known as an `inventory`. Normally, we would pass Ansible an
-`inventory file`, that would look something like this:
-
-```
-[media]
-media1.orbba.com
-media2.orbba.com
-
-[signaling]
-signaling.orbba.com
-```
-
-In our case, this is unnecessary, as Packer will generate the necessary inventory file for us.  We are only using
-Ansible to create AMIs, so we do not have to worry about the hostnames at this stage. Going back to the `site.yml` file
-above, notice that there are several items listed under `roles`.
-
-As touched on in the Packer section above, `roles` are re-usable Ansible configurations. Most of these roles are
-downloaded using `ansible-galaxy`. The rest are defined in the `roles` directory. Most roles have a set of variables
-associated with them that determine how they should be set up. For example, an Apache role would have a variable like
-`http_port`, which would allow you to set the port to listen on.
-
-Variables can be set in a number of ways but for our purposes there are three main places where we set these:
-
-1. The `group_vars` directory defines variables for a specific host group. For example, the `auth` group_vars file 
-defines variables that will be used whenever `hosts: auth` is specified in a play.
-2. Variables included in `vars_files`. If you notice in the site.yml file above, we include a secrets.yml file. These
-file name is arbitrary - we could include as many files as we want. We include the secrets separately in this way so
-that we can encrypt them.
-3. The core roles will have a play that looks like `- include_vars: "vars/{{ environment }}.yml"`. This is to include
-the environment-specific variables for that role. These variables are defined under `roles/[role]/vars/[environment].yml`.
-
-When executing an Ansible playbook, the log output will be under the same directory as the Packer logs. Read the output
-carefully to check for the cause of errors.
 
 ### Terraform
 
-*todo, see: terraform.io in the mean time.*
 
 ## Scripts
 
@@ -284,9 +225,8 @@ The list of files to encrypt is stored in scripts/secrets.txt. Each line in this
 should be encrypted. A git commit hook will forbid you from committing if the files in secrets.txt have not been
 encrypted. This prevents you from accidentally committing files that should not be in the repository.
 
-The encryption is performed using AES with a 256 bit key. The key is generated from a passphrase using PBKDF2. You will
-only have to enter this encryption key once. Its value will be encrypted and cached locally in the ORBBA_AES_256
-environment variable.
+The encryption is performed using AES with a 256 bit key. The script will expect to find this key in the 
+**ORBBA_AES256_KEY** environment variable.
 
 #### Usage Examples
 
@@ -298,15 +238,13 @@ encrypt
 
 ### Decryption (decrypt.ps1)
 
-Opposite of the encryption script, the decryption script decrypts secret files that have been previous committed to the
-repository. 
+Opposite of the encryption script, the decryption script decrypts secret files that have been previous committed to the repository. 
 
 The list of files to decrypt is stored in scripts/secrets.txt. Each line in this document is the path to a file that
 that should be decrypted. The actual file in the repository will have the suffix ".encrypted".
 
-Again, the encryption is performed using AES with a 256 bit key based off of a passphrase. If you have previously
-encrypted or decrypted files in the repository, the key will be cached in the **ORBBA_AES256_KEY** environment
-variable. This key should be the same as the one used to encrypt.
+Again, the encryption is performed using AES with a 256 bit key. The script will expect to find this key in the 
+**ORBBA_AES256_KEY** environment variable. This key should be the same as the one used to encrypt.
 
 #### Usage Examples
 
@@ -317,68 +255,14 @@ decrypt
 
 ### Provisioning (provision.ps1)
 
-The `provision` cmdlet creates AMIs based on a base Ubuntu AMI. For `meta` roles, the AMIs are environment agnostic.
-For `core` roles, these are environment dependent. This means that each `core` role AMI is associated with a particular
-environment.
+The provisioning script creates AMIs based off of the base Ubuntu AMI.
 
-The first act of the provisioning script is to return the most recent AMI for Ubuntu 14.04. Do not switch to Xenial and
-assume everything will work. There are several issues that need to be corrected in the Ansible playbooks first, most
-notably that the init.d scripts will not run.
-
-Once the Base Ubuntu AMI is retrieved, the provisioning script executes packer for the selected roles. As each AMI is
-completed, the new AMI ID will be copied over to the Terraform configuration file. For example, if we create an AMI for
-signaling in the development environment, the script will copy the new AMI ID to the file:
-`scripts/terraform/core/main-development/variables_signaling_override.tf`
-
-The `override` portion of the filename instructs Terraform to apply the variables last. It is generally used for
-machine-generated files, such as this.
-
-#### Usage Examples
-
-Build all AMIs for a role group:
-```
-provision meta
-provision core development
-```
-
-Build some AMIs for a role group:
-```
-provision meta teamcity
-provision core development signaling,media
-```
 
 ### Applying Infrastructure (apply.ps1)
 
-The `apply` cmdlet creates infrastructure for a given role group and environment. The configuration is defined in the
-`scripts/terraform` directory. The `meta` role group has only one configuration, in `terraform/meta/main`. The `core` 
-role group has one configuration for each environment, in `terraform/core/main-[environment]`.
-
-This cmdlet is a lightweight wrapper around `terraform apply`.
-
-#### Usage Examples
-
-Create all infrastructure for a role group:
-```
-apply meta
-apply core development
-```
 
 ### Destroying Infrastructure (destroy.ps1)
 
-The `apply` cmdlet destroys infrastructure for a given role group and environment. The configuration is defined in the
-`scripts/terraform` directory. The `meta` role group has only one configuration, in `terraform/meta/main`. The `core` 
-role group has one configuration for each environment, in `terraform/core/main-[environment]`.
-
-This cmdlet is a lightweight wrapper around `terraform destroy`. Only infrastructure created by Terraform will be
-destroyed.
-
-#### Usage Examples
-
-Destroy all infrastructure for a role group:
-```
-destroy meta
-destroy core development
-```
 
 ## AWS Information
 
@@ -386,8 +270,6 @@ destroy core development
 
 Terraform does not currently have the ability to change the name servers for a registered domain name; this must be done
 through the AWS web console or command line interface. Because of this limitation, you must perform a few extra steps.
-
-*Note, this may change. We may modify Terraform to take a set of nameservers instead, which alleviates this problem.*
 
 #### Create a Re-usable Delegation Set
 
@@ -426,15 +308,13 @@ scripts will execute. This user should have a policy with **at minimum** the fol
 
 ```
 {
-    "Version": "",
+    "Version": "2016-08-01",
     "Statement": [
         {
             "Effect": "Allow",
             "Action": [
-                "ec2:AcceptVpcPeeringConnection",
                 "ec2:AttachInternetGateway",
                 "ec2:AttachVolume",
-                "ec2:AuthorizeSecurityGroupEgress",
                 "ec2:AuthorizeSecurityGroupIngress",
                 "ec2:CopyImage",
                 "ec2:CreateImage",
@@ -447,7 +327,6 @@ scripts will execute. This user should have a policy with **at minimum** the fol
                 "ec2:CreateSubnet",
                 "ec2:CreateTags",
                 "ec2:CreateVpc",
-                "ec2:CreateVpcPeeringConnection",
                 "ec2:DeleteInternetGateway",
                 "ec2:DeleteKeyPair",
                 "ec2:DeleteNetworkAclEntry",
@@ -457,7 +336,6 @@ scripts will execute. This user should have a policy with **at minimum** the fol
                 "ec2:DeleteSubnet",
                 "ec2:DeleteVolume",
                 "ec2:DeleteVpc",
-                "ec2:DeleteVpcPeeringConnection",
                 "ec2:DescribeImages",
                 "ec2:DescribeInstanceAttribute",
                 "ec2:DescribeInstances",
@@ -472,18 +350,14 @@ scripts will execute. This user should have a policy with **at minimum** the fol
                 "ec2:DescribeVpcs",
                 "ec2:DescribeVpcAttribute",
                 "ec2:DescribeVpcClassicLink",
-                "ec2:DescribeVpcPeeringConnections",
                 "ec2:DetachInternetGateway",
                 "ec2:DetachVolume",
                 "ec2:ImportKeyPair",
                 "ec2:ModifyImageAttribute",
                 "ec2:ModifyInstanceAttribute",
                 "ec2:ModifyVpcAttribute",
-                "ec2:ModifyVpcPeeringConnectionOptions",
                 "ec2:RegisterImage",
-                "ec2:RebootInstances",
                 "ec2:RevokeSecurityGroupEgress",
-                "ec2:RevokeSecurityGroupIngress",
                 "ec2:RunInstances",
                 "ec2:StopInstances",
                 "ec2:TerminateInstances",
@@ -524,16 +398,8 @@ backing up and retrieving configuration data from an S3 bucket. It should be the
 
 ```
 {
-    "Version": "",
+    "Version": "2012-10-17",
     "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "ec2:DescribeInstances",
-                "ec2:RebootInstances"
-            ]
-            "Resource": "*"
-        },
         {
             "Effect": "Allow",
             "Action": "s3:ListAllMyBuckets",
@@ -553,6 +419,11 @@ backing up and retrieving configuration data from an S3 bucket. It should be the
 }
 ```
 
+### Tags
+
 ## Troubleshooting
 DevOps is notoriously finicky. There are a lot of things that can go wrong during this process and it can be difficult 
 to find help online. When encountering any difficulties, check the logs first, as they are the best set of information.
+
+I
+f an environment variable can't be found, try starting a new console.

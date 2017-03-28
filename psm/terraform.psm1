@@ -1,15 +1,17 @@
-<#
-Test whether or not the user has the required Terraform version.
-#>
 function Test-Terraform
 {
-    $RequiredVersion = "0.7.2"
+    [CmdletBinding()]
+    Param()
+    $ErrorActionPreference = "Stop"
+
+    $RequiredVersion = "0.7.0"
 
     Write-Host "`nChecking Terraform installation:"
 
     $TerraformLocation = Get-Command "terraform" -ErrorAction "SilentlyContinue"
     if (-Not ($TerraformLocation))
     {
+        Write-Host ""
         throw "Terraform is not installed or is not in PATH."
     }
     
@@ -17,44 +19,28 @@ function Test-Terraform
     
     $CurrentVersionRaw = terraform -version
     $CurrentVersion = $CurrentVersionRaw.Split(" ")[1].TrimStart("v")
-
-    try
-    {
-        $Html = (Invoke-WebRequest "https://releases.hashicorp.com/terraform").ParsedHtml
-        $LatestVersion = $Html.GetElementsByTagName("a")[1].InnerHtml
-        $LatestVersion = $LatestVersion.Split("_")[1]
-    }
-    catch
-    {
-    }
-
+    
     Write-Host "`nChecking Terraform version:"
     Write-Host -ForegroundColor DarkGray "`tCurrent  : $CurrentVersion"
     Write-Host -ForegroundColor DarkGray "`tRequired : $RequiredVersion"
-    if ($LatestVersion -ne $Null)
-    {
-        Write-Host -ForegroundColor DarkGray "`tLatest   : $LatestVersion"
-    }
-
+    
     if ([Version]$CurrentVersion -lt [Version]$RequiredVersion)
     {
+        Write-Host ""
         throw "Terraform version is outdated. Update to version $RequiredVersion."
     }       
 }
 
-<#
-Applys the infrastructure configuration to AWS.
-#>
 function Apply-Infrastructure
 {
+    [CmdletBinding()]
     Param([string]$AwsRegion, [string]$RoleGroup, [string]$Environment)
-    
+    $ErrorActionPreference = "Stop"
+
     $S3Bucket = "orbba-webrtc"
     
     try
     {
-        $TimeStamp = [Math]::floor((Get-Date -UFormat %s))
-    
         Push-Location "terraform"
         Push-Location $RoleGroup
 
@@ -70,17 +56,19 @@ function Apply-Infrastructure
         }
         else
         {
+            Write-Host ""
             throw "Unknown role group."
         }
 
-        $LogPath = "logs\apply-$TimeStamp.log"
-        $LogFile = "$PWD\$LogPath"
+        $TimeStamp = [Math]::floor((Get-Date -UFormat %s))
+        $LogPath = "$PWD\logs\apply-$TimeStamp.log"
+        
         $Env:TF_LOG = "DEBUG"
-        $Env:TF_LOG_PATH = $LogFile
+        $Env:TF_LOG_PATH = $LogPath
 
         Write-Host "`nApplying infrastructure."
-        Write-Host -ForegroundColor DarkGray "`Role Group : $RoleGroup"
-        Write-Host -ForegroundColor DarkGray "`tLog file  : $LogPath"
+        Write-Host -ForegroundColor DarkGray "`tLocation : $PWD"
+        Write-Host -ForegroundColor DarkGray "`tLog file : $LogPath"
 
         $StateExists = Test-Path ".terraform\terraform.tfstate"
         if ($StateExists)
@@ -90,16 +78,13 @@ function Apply-Infrastructure
             {
                 $OverrideConfigureState = $True
             }
-            elseif ($StateData.Remote.Config.Key -ne $S3Key) {
-                $OverrideConfigureState = $True
-            }
         }
         
         if (-Not $StateExists -Or $OverrideConfigureState)
         {
             if ($OverrideConfigureState)
             {
-                Write-Host "`nRemote state will be reconfigured:"
+                Write-Host "`nRemote state is will be reconfigured:"
                 Write-Host -ForegroundColor DarkGray "`tOld Bucket : $($StateData.Remote.Config.Bucket)"
                 Write-Host -ForegroundColor DarkGray "`tNew Bucket : $S3Bucket"
                 Write-Host -ForegroundColor DarkGray "`tKey        : $S3Key"
@@ -113,14 +98,14 @@ function Apply-Infrastructure
                 Write-Host -ForegroundColor DarkGray "`tRegion : $AwsRegion"
             }
 
-            $TerraformExpression = "terraform remote config " + `
+            $TerraformCmd = "terraform remote config " + `
                 "-backend=s3 " + `
                 '-backend-config="bucket=$S3Bucket" ' + `
                 '-backend-config="key=$S3Key" ' + `
                 '-backend-config="region=$AwsRegion"'
 
-            Write-Host "Using Terraform command: $TerraformExpression"
-            Invoke-Expression $TerraformExpression
+            Write-Host "Using Terraform command: $TerraformCmd"
+            Invoke-Expression $TerraformCmd
         }
         else
         {
@@ -130,42 +115,44 @@ function Apply-Infrastructure
             Write-Host -ForegroundColor DarkGray "`tRegion : $AwsRegion"
         }
 
-        $TerraformExpression = "terraform get"
+        $TerraformCmd = "terraform get"
 
         Write-Host "`nUpdating terraform modules."
-        Write-Host "Using Terraform command: $TerraformExpression"
-        Invoke-Expression $TerraformExpression
+        Write-Host "Using Terraform command: $TerraformCmd"
+        Invoke-Expression $TerraformCmd
         
         if ($LastExitCode -ne 0)
         {
+            Write-Host ""
             throw "An error occurred in terraform."
         }
 
-        $TerraformExpression = "terraform apply"
+        $TerraformCmd = "terraform apply "
 
         Write-Host "`nApplying infrastructure changes."
-        Write-Host "Using Terraform command: $TerraformExpression"
-        Invoke-Expression $TerraformExpression
+        Write-Host "Using Terraform command: $TerraformCmd"
+        Invoke-Expression $TerraformCmd
         
         if ($LastExitCode -ne 0)
         {
+            Write-Host ""
             throw "An error occurred in terraform."
         }
     }
     catch
     {
-        Write-Host $_.Exception
-        $Exception = $_.Exception
+        Write-Host -ForegroundColor Red $_.Exception.Message
     }
     finally
     {
-        Remove-Item Env:TF_LOG
-        Remove-Item Env:TF_LOG_PATH
         Pop-Location
         Pop-Location
         Pop-Location
         
-        $LogLines = Get-Content $LogFile
+        Remove-Item Env:TF_LOG
+        Remove-Item Env:TF_LOG_PATH
+        
+        $LogLines = Get-Content $LogPath
         
         for ($i = 0; $i -lt $LogLines.Length; $i++)
         {
@@ -179,26 +166,18 @@ function Apply-Infrastructure
             }
         }
     }
-    
-    if ($Exception -ne $Null)
-    {
-        throw $Exception
-    }    
 }
 
-<#
-Destroys managed infrastructure.
-#>
 function Destroy-Infrastructure
 {
+    [CmdletBinding()]
     Param([string]$RoleGroup, [string]$Environment)
+    $ErrorActionPreference = "Stop"
 
     $S3Bucket = "orbba-webrtc"
     
     try
     {
-        $TimeStamp = [Math]::floor((Get-Date -UFormat %s))
-        
         Push-Location "terraform"
         Push-Location $RoleGroup
 
@@ -214,23 +193,25 @@ function Destroy-Infrastructure
         }
         else
         {
+            Write-Host ""
             throw "Unknown role group."
         }
-
-        $LogPath = "logs\destroy-$TimeStamp.log"
-        $LogFile = "$PWD\$LogPath"
-        $Env:TF_LOG = "DEBUG"
-        $Env:TF_LOG_PATH = $LogFile
         
-        $TerraformExpression = "terraform destroy"
+        $TimeStamp = [Math]::floor((Get-Date -UFormat %s))
+        $LogPath = "$PWD\logs\destroy-$TimeStamp.log"
+
+        $Env:TF_LOG = "DEBUG"
+        $Env:TF_LOG_PATH = $LogPath
+        
+        $TerraformCmd = "terraform destroy"
 
         Write-Host "`nDestroying all infrastructure."
-        Write-Host "Using command : $TerraformExpression"
-        Write-Host -ForegroundColor DarkGray "`tRole Group : $RoleGroup"
-        Write-Host -ForegroundColor DarkGray "`tLog file   : $LogPath"
-        Write-Host ""
+        Write-Host "Using command : $TerraformCmd"
+        Write-Host -ForegroundColor DarkGray "`tLocation : $PWD"
+        Write-Host -ForegroundColor DarkGray "`tLog file : $LogPath"
 
-        Invoke-Expression $TerraformExpression -ErrorAction SilentlyContinue
+        Write-Host "'"
+        Invoke-Expression $TerraformCmd -ErrorAction SilentlyContinue
     }
     catch
     {
@@ -240,11 +221,12 @@ function Destroy-Infrastructure
     {
         Remove-Item Env:TF_LOG
         Remove-Item Env:TF_LOG_PATH
+        
         Pop-Location
         Pop-Location
         Pop-Location
         
-        $LogLines = Get-Content $LogFile
+        $LogLines = Get-Content $LogPath
         
         for ($i = 0; $i -lt $LogLines.Length; $i++)
         {
@@ -257,11 +239,6 @@ function Destroy-Infrastructure
                 }
             }
         }        
-    }
-    
-    if ($Exception -ne $Null)
-    {
-        throw $Exception
     }
 }
 

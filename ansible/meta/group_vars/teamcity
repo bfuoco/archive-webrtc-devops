@@ -13,17 +13,15 @@ teamcity_version: 10.0.1
 # will not be sucessful.
 teamcity_sha256: 8B59EE86724DCCB1EDE63E26D506541E48E832705CB2098893DBC32980316ECA
 
-# Defines what hour that teamcity backups will occur at.
-teamcity_backup_hour: 0
-
-# Defines what minute that teamcity backups will occur at.
-teamcity_backup_minute: 30
+# Defines how often config will be backed up to S3. The value here is the "minutes" section of a crontab entry, so
+# "*/30", for example, backs up the config every 30 minutes.
+teamcity_config_backup_interval: "*/30"
 
 # Defines the name of the S3 bucket where config will be backed up to.
-teamcity_backup_bucket: orbba-webrtc
+teamcity_config_backup_bucket: orbba-webrtc
 
 # Defines the key where teamcity will back up its configuration to.
-teamcity_backup_object: meta/teamcity/backup
+teamcity_config_backup_object: /meta/teamcity/config
 
 # The name of the database that teamcity should use to store build results.
 teamcity_database: teamcity
@@ -34,8 +32,17 @@ mysql_root_username: root
 # Defines the mysql root password.
 mysql_root_password: root
 
-# Name of the Slack bot to use when sending messages.
-slack_bot_name: Orbblob
+# Defines the Java major version that will be installed on the hosts.
+oracle_java_version: 8
+
+# Defines the Java minor version that will be installed on the hosts.
+oracle_java_version_update: 101
+
+# Use Oracle JDK by default.
+oracle_java_set_as_default: yes
+
+# Invalidates the ppa cache after this amount of time.
+launchpad_ppa_webupd8_cache_valid_time: 3600
 
 # Defines system-wide environment variables. The AWS credentials are copied here so they can be used when running
 # command line scripts.

@@ -1,16 +1,19 @@
 function Test-RoleGroup
 {
+    [CmdletBinding()]
     Param([string]$RoleGroup)
 
     if ($RoleGroup -ne "core" -And $RoleGroup -ne "meta")
     {
-        throw "Invalid role group $($RoleGroup)."
+        Write-Host ""
+        throw "Invalid role group $RoleGroup."
     }
 }
 
 function Test-Roles
 {
-    Param([string]$RoleGroup, [string[]]$Roles, [bool]$Quiet)
+    [CmdletBinding()]
+    Param([string]$RoleGroup, [string[]]$Roles)
     
     switch ($RoleGroup)
     {
@@ -24,12 +27,14 @@ function Test-Roles
         }
         default
         {
+            Write-Host ""
             throw "Invalid role group $RoleGroup."
         }
     }
     
     if ($Roles.Length -eq 0)
     {
+        Write-Host ""
         throw "No roles were specified."
     }
     
@@ -37,15 +42,11 @@ function Test-Roles
     {
         if (-Not $ValidRoles.Contains($Role))
         {
+            Write-Host
             throw "Role $Role is not in the $RoleGroup role group."
         }
     }
-
-    if ($Quiet)
-    {
-        return;
-    }
-
+        
     $Chk = [char]8730
     
     Write-Host "`nBuilding AMIs for the following roles:"
@@ -64,19 +65,17 @@ function Test-Roles
 
 function Test-Environment
 {
+    [CmdletBinding()]
     Param([string]$RoleGroup, [string]$Environment)
 
     Write-Host "`nChecking build configuration for role group:"
     Write-Host -ForegroundColor DarkGray "`tRole group  : $RoleGroup"
-
+    
     if ($RoleGroup -eq "core")
     {
-        if ([string]::IsNullOrWhiteSpace($Environment))
+        if (-Not $("development", "integrated", "staging", "qa", "production").Contains($Environment))
         {
-            throw "You must specify an environment when building core roles."
-        }
-        elseif (-Not $("development", "integrated", "staging", "qa", "production").Contains($Environment))
-        {
+            Write-Host ""
             throw "Invalid environment $Environment."
         }
         
@@ -90,6 +89,7 @@ function Test-Environment
 
 function Get-DefaultRoles
 {
+    [CmdletBinding()]
     Param([string]$RoleGroup)
     
     if ($RoleGroup -eq "core")

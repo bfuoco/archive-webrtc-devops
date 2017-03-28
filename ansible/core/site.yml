@@ -1,84 +1,56 @@
 ---
-# This playbook contains definitions for all of the WebRTC roles.
-#
-# Environment-specific AMIs are generated. Packer will pass in an "environment" variable, which determines which
-# environment to generate for. Each of the WebRTC roles contains mutliple environment configurations, which will be
-# included based on the value of this variable.
-#
-# Brief role explanations:
-# ansiblebit.* : installs Oracle's JDK8
-# geerlingguy.ntp : installs NTP daemon/configures time zone
-# opdavies.webmin : installs webmin (view logs/configure system online)
-# Datadog.datadog :  installs data dog monitoring client
-#
+
 - name: apply common configuration to all nodes
-  hosts: all
+  hosts: auth
   remote_user: ubuntu
   vars_files:
     - vars/secret.yml
+
   roles:
     - ansiblebit.launchpad-ppa-webupd8
     - ansiblebit.oracle-java
-    - geerlingguy.ntp
-    - hswong3i.webmin
     - role: Datadog.datadog
       become: true
       become_method: sudo
 
-  tasks:
-    - name: ensure webmin user exists
-      user:
-        name: webmin
-        group: sudo
-        password: "{{ webmin_root_password }}"
-      notify:
-        - restart webmin
-
-# Configuration here for each of the individual servers.
-#
-# One important thing to note is that we have to include the franklinkim.environment role for each one of these
-# individually. The reason for this is that the environment variables are defined in the server-specific role, ie:
-# "signaling", "media". If franklinkim.environment is instead included in the "common" configuration above, it will
-# throw an error because the environment variables won't be defined yet.
-#
 - name: apply configuration for media servers
   hosts: media
-  vars_files:
-    - vars/secret.yml
   roles:
     - media
     - franklinkim.environment
+  vars_files:
+    - vars/secret.yml
 
 - name: apply configuration for signaling servers
   hosts: signaling
-  vars_files:
-    - vars/secret.yml
   roles:
     - signaling
     - franklinkim.environment
     - geerlingguy.nodejs
+  vars_files:
+    - vars/secret.yml
 
 - name: apply configuration for auth servers
   hosts: auth
-  vars_files:
-    - vars/secret.yml
   roles:
     - auth
     - franklinkim.environment
+  vars_files:
+    - vars/secret.yml
 
 - name: apply configuration for recording servers
   hosts: recording
-  vars_files:
-    - vars/secret.yml
   roles:
     - recording
     - franklinkim.environment
+  vars_files:
+    - vars/secret.yml
 
 - name: apply configuration for demo servers
   hosts: demo
-  vars_files:
-    - vars/secret.yml
   roles:
     - demo
     - franklinkim.environment
     - geerlingguy.apache
+  vars_files:
+    - vars/secret.yml
