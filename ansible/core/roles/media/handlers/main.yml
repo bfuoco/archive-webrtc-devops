@@ -1,0 +1,5 @@
+---
+- name: restart media
+  service:
+    name: media
+    state: restarted

@@ -1,0 +1,5 @@
+---
+- name: restart signaling
+  service:
+    name: signaling
+    state: restarted

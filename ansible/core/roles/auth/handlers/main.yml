@@ -1,0 +1,5 @@
+---
+- name: restart auth
+  service:
+    name: auth
+    state: restarted

@@ -1,0 +1,16 @@
+---
+environment_config:
+  AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+  AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  AWS_DEFAULT_REGION: "{{ aws_region }}"
+  ORBBA_MEDIA_ENVIRONMENT: development
+  ORBBA_MEDIA_LOG_LEVEL: debug
+  ORBBA_MEDIA_RELAY_ADDRESS: localhost
+  ORBBA_MEDIA_RELAY_PORT: 3478
+  ORBBA_MEDIA_RELAY_REALM: dev.media1.fm-orbba.com
+  ORBBA_MEDIA_SIGNALING_ADDRESS: dev.signaling1.fm-orbba.com
+  ORBBA_MEDIA_SIGNALING_PORT: 8090
+  ORBBA_MEDIA_LOGGLY_API_KEY: "{{ loggly_api_key }}"
+  ORBBA_MEDIA_LOGGLY_TAG: media
+
+

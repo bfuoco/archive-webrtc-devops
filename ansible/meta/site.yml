@@ -1,0 +1,28 @@
+---
+#
+# This playbook has only one role for now, the TeamCity build server. Regardless, the roles have been split based
+# on what is likely to be common for future hosts.
+#
+# Refer to the "teamcity" role for more information.
+#
+- name: apply common configuration to all hosts
+  hosts: all
+  remote_user: ubuntu
+  vars_files:
+    - vars/secret.yml
+  roles:
+    - franklinkim.environment
+    - ansiblebit.launchpad-ppa-webupd8
+    - ansiblebit.oracle-java
+    - geerlingguy.ntp
+    - role: Datadog.datadog
+      become: true
+      become_method: sudo
+
+- name: apply configuration for teamcity hosts
+  hosts: teamcity
+  remote_user: ubuntu
+  vars_files:
+    - vars/secret.yml
+  roles:
+    - teamcity

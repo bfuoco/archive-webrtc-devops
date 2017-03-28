@@ -1,0 +1,58 @@
+---
+- include_vars: "vars/{{ environment }}.yml"
+
+- name: ensure required packages are installed
+  apt:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - awscli
+    - ca-certificates
+    - python-boto
+  register: result
+  until: result|success
+  retries: 5
+  delay: 10
+
+- name: copy init script
+  copy:
+    src: files/etc/init.d/recording
+    dest: /etc/init.d/recording
+    mode: 0550
+  notify:
+    - restart recording
+
+- name: copy update script
+  template:
+    src: templates/usr/local/bin/update.j2
+    dest: /usr/local/bin/update
+    mode: 0550
+
+- name: ensure service directory exists
+  file:
+    path: /usr/local/orbba
+    state: directory
+    mode: 0775
+
+- name: ensure log directory exists
+  file:
+    path: /var/log/orbba
+    state: directory
+    mode: 0775
+
+- name: register service with rc.d
+  service:
+    name: recording
+    enabled: yes
+  notify:
+    - restart recording
+
+- name: add AWS credentials to sudoers env_keep
+  lineinfile:
+    dest: /etc/sudoers
+    line: "Defaults env_keep+=\"AWS_DEFAULT_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY JAVA_HOME\""
+
+- name: add cron job to download new version of jar file at reboot
+  cron:
+    job: /usr/local/bin/update
+    special_time: reboot

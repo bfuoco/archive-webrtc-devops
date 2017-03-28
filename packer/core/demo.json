@@ -1,0 +1,58 @@
+{
+  "variables": {
+    "component": null,
+    "owner": null,
+    "role_group": "core",
+    "role": "demo",
+    "environment": null,
+    "aws_source_ami": null,
+    "aws_instance_type": null,
+    "aws_region": null,
+    "script_path": "../common/",
+    "ansible_path": "../../ansible/"
+  },
+  "builders": [{
+    "type": "amazon-ebs",
+    "region": "{{ user `aws_region` }}",
+    "ami_name": "{{ user `component` }}-{{ user `role_group` }}-{{ user `role` }}-{{ timestamp }}",
+    "ami_description": "Provisioned AMI for a JavaScript demo server.",
+    "source_ami": "{{ user `aws_source_ami` }}",
+    "instance_type": "{{ user `aws_instance_type` }}",
+    "ssh_username": "ubuntu",
+    "force_deregister": true,
+    "enhanced_networking": true,
+    "tags": {
+      "Name": "{{ user `component` }}-{{ user `role_group` }}-{{ user `role` }}-ami",
+      "Component": "{{ user `component` }}",
+      "Owner": "{{ user `owner` }}",
+      "RoleGroup": "{{ user `role_group` }}",
+      "Role": "{{ user `role` }}",
+      "Environment": "{{ user `environment` }}"
+    }
+  }],
+  "provisioners": [{
+    "type": "shell",
+    "script": "{{ user `script_path` }}ansible-bootstrap.sh",
+    "execute_command": "echo 'ubuntu' | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+    "environment_vars": [
+      "DEBIAN_FRONTEND=noninteractive"
+    ]
+  }, {
+    "type": "shell",
+    "script": "{{ user `script_path` }}ansible-galaxy.sh",
+    "execute_command": "echo 'ubuntu' | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+    "environment_vars": [
+      "DEBIAN_FRONTEND=noninteractive"
+    ]
+  }, {
+    "type": "ansible-local",
+    "command": "sudo ansible-playbook",
+    "playbook_file": "{{ user `ansible_path` }}/{{ user `role_group` }}/site.yml",
+    "playbook_dir": "{{ user `ansible_path` }}/{{ user `role_group` }}",
+    "inventory_groups": "{{ user `role` }}",
+    "extra_arguments": [
+      "--extra-vars \"aws_region={{ user `aws_region`}} environment={{ user `environment` }}\"",
+      "-vvv"
+    ]
+  }]
+}

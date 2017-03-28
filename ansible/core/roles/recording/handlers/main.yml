@@ -1,0 +1,5 @@
+---
+- name: restart recording
+  service:
+    name: recording
+    state: restarted

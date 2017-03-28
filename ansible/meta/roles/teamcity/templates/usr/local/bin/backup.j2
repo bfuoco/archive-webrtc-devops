@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+{
+    export JAVA_HOME=/usr/lib/jvm/java-8-oracle
+
+    if aws s3 ls "s3://{{ teamcity_backup_bucket }}" 2>&1 | grep -q 'NoSuchBucket'
+    then
+        aws s3api create-bucket --bucket {{ teamcity_backup_bucket }}
+    fi
+
+    rm /tmp/teamcity-backup.zip
+
+    /srv/TeamCity/bin/maintainDB.sh backup -C -D -L -P -U -A /srv/.BuildServer -F /tmp/teamcity-backup
+
+    aws s3 cp /tmp/teamcity-backup.zip s3://{{ teamcity_backup_bucket }}/{{ teamcity_backup_object }}.zip
+
+    if [ $? -eq 0 ]
+    then
+        emoji=$(( (RANDOM % 4) + 1 ))
+
+        case "$emoji" in
+        "1")
+            emoji=:grin:
+            ;;
+        "2")
+            emoji=:smile:
+            ;;
+        "3")
+            emoji=:slightly_smiling_face:
+            ;;
+        "4")
+            emoji=:kissing_smiling_eyes:
+            ;;
+        esac
+
+        curl -X POST --data-urlencode "payload={\"username\":\"{{ slack_bot_name }}\",\"icon_emoji\":\"$emoji\", \"text\": \"TeamCity configuration and database entries were backed up to S3.\"}" https://hooks.slack.com/services/{{ slack_api_token }}
+    else
+        emoji=$(( (RANDOM % 4) + 1 ))
+
+        case "$emoji" in
+        "1")
+            emoji=:confounded:
+            ;;
+        "2")
+            emoji=:frowning:
+            ;;
+        "3")
+            emoji=:expressionless:
+            ;;
+        "4")
+            emoji=:unamused:
+            ;;
+        esac
+
+        curl -X POST --data-urlencode "payload={\"username\":\"{{ slack_bot_name }}\",\"icon_emoji\":\"$emoji\", \"text\": \"Something went wrong backing up TeamCity configuration. Check the log output in /home/ubuntu/last-backup.log to see what went wrong.\"}" https://hooks.slack.com/services/{{ slack_api_token }}
+    fi
+
+    rm /tmp/teamcity-backup.zip
+} > /home/teamcity/last-backup-stdout.log 2> /home/teamcity/last-backup-stderr.log

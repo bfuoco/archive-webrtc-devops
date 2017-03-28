@@ -1,0 +1,15 @@
+---
+- name: restart teamcity
+  service:
+    name: teamcity
+    state: restarted
+
+- name: restart teamcity agent
+  service:
+    name: teamcity-agent
+    state: restarted
+
+- name: restart mysql
+  service:
+    name: mysql
+    state: restarted
